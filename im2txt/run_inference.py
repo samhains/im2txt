@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from PIL import Image
+
+import google_scraper
 import math
 import os
 import random
@@ -26,6 +29,7 @@ import json
 
 import tensorflow as tf
 
+import os, shutil
 from im2txt import configuration
 from im2txt import inference_wrapper
 from im2txt.inference_utils import caption_generator
@@ -43,6 +47,24 @@ tf.flags.DEFINE_string("input_files", "",
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
+def delete_files(folder):
+  for the_file in os.listdir(folder):
+      file_path = os.path.join(folder, the_file)
+      try:
+          if os.path.isfile(file_path):
+              os.unlink(file_path)
+          #elif os.path.isdir(file_path): shutil.rmtree(file_path)
+      except Exception as e:
+          print(e)
+
+def get_filenames():
+  filenames = []
+  for file_pattern in FLAGS.input_files.split(","):
+    filenames.extend(tf.gfile.Glob(file_pattern))
+  tf.logging.info("Running caption generation on %d files matching %s",
+                  len(filenames), FLAGS.input_files)
+  return filenames
+
 
 def main(_):
   # Build the inference graph.
@@ -56,13 +78,7 @@ def main(_):
   # Create the vocabulary.
   vocab = vocabulary.Vocabulary(FLAGS.vocab_file)
 
-  filenames = []
-  data = {}
 
-  for file_pattern in FLAGS.input_files.split(","):
-    filenames.extend(tf.gfile.Glob(file_pattern))
-  tf.logging.info("Running caption generation on %d files matching %s",
-                  len(filenames), FLAGS.input_files)
 
   with tf.Session(graph=g) as sess:
     # Load the model from checkpoint.
@@ -71,13 +87,31 @@ def main(_):
     # Prepare the caption generator. Here we are implicitly using the default
     # beam search parameters. See caption_generator.py for a description of the
     # available beam search parameters.
-    generator = caption_generator.CaptionGenerator(model, vocab)
 
+    caption = caption_to_img(sess, vocab, model, 'genesis')
+    print("CAPTION", caption)
+    while True:
+      caption = caption_to_img(sess, vocab, model, caption)
+      print("CAPTION", caption)
+    # caption_to_img(sess, vocab, model, caption)
+
+
+def caption_to_img(sess, vocab, model, caption):
+    google_scraper.main(caption)
+    filenames = get_filenames()
+    generator = caption_generator.CaptionGenerator(model, vocab)
+    caption = generate_captions(sess, generator, vocab, filenames)
+    delete_files('./im2txt/images/')
+    print(caption)
+    return caption
+
+def generate_captions(sess, generator, vocab, filenames):
+    data = {}
     for filename in filenames:
+
       with tf.gfile.GFile(filename, "r") as f:
         image = f.read()
       captions = generator.beam_search(sess, image)
-      print("Captions for image %s:" % os.path.basename(filename))
       key = os.path.basename(filename)
 
       caption = captions[0]
@@ -91,11 +125,11 @@ def main(_):
       if (sentence.endswith(".")):
           sentence = sentence[:-1]
 
-      data[key] = sentence
-      print("  %d) %s (p=%f)" % (0, sentence, math.exp(caption.logprob)))
-
-    with open('data.json', 'w') as outfile:
-        json.dump(data, outfile)
+      return sentence
+      # data[key] = sentence
+      # print("  %d) %s (p=%f)" % (0, sentence, math.exp(caption.logprob)))
+      # with open('data.json', 'w') as outfile:
+          # json.dump(data, outfile)
 
 if __name__ == "__main__":
   tf.app.run()
