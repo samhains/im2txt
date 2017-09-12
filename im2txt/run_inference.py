@@ -87,13 +87,15 @@ def main(_):
     # Prepare the caption generator. Here we are implicitly using the default
     # beam search parameters. See caption_generator.py for a description of the
     # available beam search parameters.
+    delete_files('./im2txt/images')
 
-    caption = caption_to_img(sess, vocab, model, 'genesis')
-    print("CAPTION", caption)
+    caption = caption_to_img(sess, vocab, model, 'Human')
     while True:
+      last_caption = caption
       caption = caption_to_img(sess, vocab, model, caption)
-      print("CAPTION", caption)
-    # caption_to_img(sess, vocab, model, caption)
+      if caption == last_caption:
+        break
+    caption_to_img(sess, vocab, model, caption)
 
 
 def caption_to_img(sess, vocab, model, caption):
@@ -102,7 +104,6 @@ def caption_to_img(sess, vocab, model, caption):
     generator = caption_generator.CaptionGenerator(model, vocab)
     caption = generate_captions(sess, generator, vocab, filenames)
     delete_files('./im2txt/images/')
-    print(caption)
     return caption
 
 def generate_captions(sess, generator, vocab, filenames):
